@@ -13,6 +13,9 @@ import {
   ServiceProviderMetadata,
   ServiceProviderSettings,
 } from './types';
+import { extract } from './extractor';
+import libsaml from './libsaml';
+import { base64Decode } from './utility';
 import { namespace } from './urn';
 import redirectBinding from './binding-redirect';
 import postBinding from './binding-post';
@@ -97,6 +100,28 @@ export class ServiceProvider extends Entity {
       binding: binding,
       request: request
     });
+  }
+
+  public getPostResponseIssuer(request) {
+    const { body } = request;
+
+    const direction = libsaml.getQueryParamByType('SAMLResponse');
+    const encodedRequest = body[direction];
+
+    let samlContent = String(base64Decode(encodedRequest));
+
+    // implement the decode, inflate based on different bindings and get the raw response
+    // rawResponse is just a string
+    return extract(samlContent, [
+      {
+        key: 'issuer',
+        localPath: [
+          ['Response', 'Issuer'],
+          ['Response', 'Assertion', 'Issuer']
+        ],
+        attributes: []
+      }
+    ]);
   }
 
 }
