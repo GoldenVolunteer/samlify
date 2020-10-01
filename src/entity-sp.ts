@@ -102,6 +102,7 @@ export class ServiceProvider extends Entity {
     });
   }
 
+  // Added per https://github.com/tngan/samlify/issues/357
   public getPostResponseIssuer(request) {
     const { body } = request;
 
@@ -110,9 +111,7 @@ export class ServiceProvider extends Entity {
 
     let samlContent = String(base64Decode(encodedRequest));
 
-    // implement the decode, inflate based on different bindings and get the raw response
-    // rawResponse is just a string
-    return extract(samlContent, [
+    const { issuer } = extract(samlContent, [
       {
         key: 'issuer',
         localPath: [
@@ -122,6 +121,8 @@ export class ServiceProvider extends Entity {
         attributes: []
       }
     ]);
+
+    return issuer[0];
   }
 
 }
