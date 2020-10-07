@@ -13,6 +13,9 @@ import {
   ServiceProviderMetadata,
   ServiceProviderSettings,
 } from './types';
+import { extract } from './extractor';
+import libsaml from './libsaml';
+import { base64Decode } from './utility';
 import { namespace } from './urn';
 import redirectBinding from './binding-redirect';
 import postBinding from './binding-post';
@@ -97,6 +100,29 @@ export class ServiceProvider extends Entity {
       binding: binding,
       request: request
     });
+  }
+
+  // Added per https://github.com/tngan/samlify/issues/357
+  public getPostResponseIssuer(request) {
+    const { body } = request;
+
+    const direction = libsaml.getQueryParamByType('SAMLResponse');
+    const encodedRequest = body[direction];
+
+    let samlContent = String(base64Decode(encodedRequest));
+
+    const { issuer } = extract(samlContent, [
+      {
+        key: 'issuer',
+        localPath: [
+          ['Response', 'Issuer'],
+          ['Response', 'Assertion', 'Issuer']
+        ],
+        attributes: []
+      }
+    ]);
+
+    return issuer[0];
   }
 
 }
