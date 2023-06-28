@@ -7,15 +7,20 @@ import Entity, {
   BindingContext,
   PostBindingContext,
   ESamlHttpRequest,
+  SimpleSignBindingContext,
 } from './entity';
 import {
   IdentityProviderConstructor as IdentityProvider,
   ServiceProviderMetadata,
   ServiceProviderSettings,
 } from './types';
+import { extract } from './extractor';
+import libsaml from './libsaml';
+import { base64Decode } from './utility';
 import { namespace } from './urn';
 import redirectBinding from './binding-redirect';
 import postBinding from './binding-post';
+import simpleSignBinding from './binding-simplesign';
 import { flow, FlowResult } from './flow';
 
 /*
@@ -56,28 +61,38 @@ export class ServiceProvider extends Entity {
     idp: IdentityProvider,
     binding = 'redirect',
     customTagReplacement?: (template: string) => BindingContext,
-  ): BindingContext | PostBindingContext {
+  ): BindingContext | PostBindingContext| SimpleSignBindingContext  {
     const nsBinding = namespace.binding;
     const protocol = nsBinding[binding];
     if (this.entityMeta.isAuthnRequestSigned() !== idp.entityMeta.isWantAuthnRequestsSigned()) {
       throw new Error('ERR_METADATA_CONFLICT_REQUEST_SIGNED_FLAG');
     }
 
-    if (protocol === nsBinding.redirect) {
-      return redirectBinding.loginRequestRedirectURL({ idp, sp: this }, customTagReplacement);
-    }
+    let context: any = null;
+    switch (protocol) {
+      case nsBinding.redirect:
+        return redirectBinding.loginRequestRedirectURL({ idp, sp: this }, customTagReplacement);
 
-    if (protocol === nsBinding.post) {
-      const context = postBinding.base64LoginRequest("/*[local-name(.)='AuthnRequest']", { idp, sp: this }, customTagReplacement);
-      return {
-        ...context,
-        relayState: this.entitySetting.relayState,
-        entityEndpoint: idp.entityMeta.getSingleSignOnService(binding) as string,
-        type: 'SAMLRequest',
-      };
-    }
-    // Will support artifact in the next release
-    throw new Error('ERR_SP_LOGIN_REQUEST_UNDEFINED_BINDING');
+      case nsBinding.post:
+        context = postBinding.base64LoginRequest("/*[local-name(.)='AuthnRequest']", { idp, sp: this }, customTagReplacement);
+        break;
+
+      case nsBinding.simpleSign:
+        // Object context = {id, context, signature, sigAlg}
+        context = simpleSignBinding.base64LoginRequest( { idp, sp: this }, customTagReplacement);
+        break;
+
+      default:
+        // Will support artifact in the next release
+        throw new Error('ERR_SP_LOGIN_REQUEST_UNDEFINED_BINDING');
+    } 
+
+    return {
+      ...context,
+      relayState: this.entitySetting.relayState,
+      entityEndpoint: idp.entityMeta.getSingleSignOnService(binding) as string,
+      type: 'SAMLRequest',
+    };
   }
 
   /**
@@ -97,6 +112,29 @@ export class ServiceProvider extends Entity {
       binding: binding,
       request: request
     });
+  }
+
+  // Added per https://github.com/tngan/samlify/issues/357
+  public getPostResponseIssuer(request) {
+    const { body } = request;
+
+    const direction = libsaml.getQueryParamByType('SAMLResponse');
+    const encodedRequest = body[direction];
+
+    let samlContent = String(base64Decode(encodedRequest));
+
+    const { issuer } = extract(samlContent, [
+      {
+        key: 'issuer',
+        localPath: [
+          ['Response', 'Issuer'],
+          ['Response', 'Assertion', 'Issuer']
+        ],
+        attributes: []
+      }
+    ]);
+
+    return issuer[0];
   }
 
 }

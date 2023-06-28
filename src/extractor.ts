@@ -1,4 +1,4 @@
-import { DOMParser } from 'xmldom';
+import { DOMParser } from '@xmldom/xmldom';
 import { select, SelectedValue } from 'xpath';
 import { uniq, last, zipObject, notEmpty } from './utility';
 import camelCase from 'camelcase';
@@ -166,6 +166,11 @@ export const logoutRequestFields: ExtractorFields = [
     attributes: []
   },
   {
+    key: 'sessionIndex',
+    localPath: ['LogoutRequest', 'SessionIndex'],
+    attributes: []
+  },
+  {
     key: 'signature',
     localPath: ['LogoutRequest', 'Signature'],
     attributes: [],
@@ -253,7 +258,7 @@ export function extract(context: string, fields) {
         index: ['Name'],
         attributePath: ['AttributeValue'],
         attributes: []
-      } 
+      }
     */
     if (index && attributePath) {
       // find the index in localpath
@@ -309,7 +314,7 @@ export function extract(context: string, fields) {
         value = node[0].toString();
       }
       if (node.length > 1) {
-        value = node.map(n => n.toString()); 
+        value = node.map(n => n.toString());
       }
       return {
         ...result,
@@ -330,8 +335,8 @@ export function extract(context: string, fields) {
       const childXPath = `${buildAbsoluteXPath([last(localPath)])}${attributeXPath}`;
       const attributeValues = baseNode.map((node: string) => {
         const nodeDoc = new dom().parseFromString(node);
-        const values = select(childXPath, nodeDoc).reduce((r: any, n: Attr) => { 
-          r[camelCase(n.name)] = n.value;
+        const values = select(childXPath, nodeDoc).reduce((r: any, n: Attr) => {
+          r[camelCase(n.name, {locale: 'en-us'})] = n.value;
           return r;
         }, {});
         return values;
@@ -373,7 +378,8 @@ export function extract(context: string, fields) {
         attributeValue = select(fullPath, targetDoc);
       }
       if (node.length > 1) {
-        attributeValue = node.map((n: Node) => n.firstChild!.nodeValue);
+        attributeValue = node.filter((n: Node) => n.firstChild)
+          .map((n: Node) => n.firstChild!.nodeValue);
       }
       return {
         ...result,
